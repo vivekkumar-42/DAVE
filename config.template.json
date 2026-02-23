@@ -1,0 +1,155 @@
+{
+  "ui": {
+    "appearance_mode": "Dark",
+    "window_width": 1540,
+    "window_height": 960,
+    "min_width": 1320,
+    "min_height": 820,
+    "performance_profiler": {
+      "enabled": true,
+      "report_interval_seconds": 5,
+      "history_size": 60,
+      "persist_to_file": true,
+      "file_name": "dave_perf_metrics.jsonl",
+      "max_file_size_kb": 1024
+    },
+    "visual_system": {
+      "background": "#0B0F17",
+      "panel": "#121826",
+      "panel_elevated": "#161D2E",
+      "accent_primary": "#00F5FF",
+      "accent_secondary": "#0090FF",
+      "success": "#00FF9C",
+      "warning": "#FFC857",
+      "error": "#FF3B3B",
+      "text_primary": "#E6EDF3",
+      "text_secondary": "#7A8BA3",
+      "border": "#22314A"
+    },
+    "state_visuals": {
+      "NORMAL": {
+        "accent": "#00F5FF",
+        "glow": "#43F6FF",
+        "ring_speed": 0.45,
+        "pulse_speed": 0.07
+      },
+      "LISTENING": {
+        "accent": "#57F8FF",
+        "glow": "#8CFBFF",
+        "ring_speed": 0.42,
+        "pulse_speed": 0.1
+      },
+      "PROCESSING": {
+        "accent": "#0090FF",
+        "glow": "#47AFFF",
+        "ring_speed": 1.85,
+        "pulse_speed": 0.09
+      },
+      "EXECUTING": {
+        "accent": "#00FF9C",
+        "glow": "#70FFBF",
+        "ring_speed": 1.2,
+        "pulse_speed": 0.16
+      },
+      "SPEAKING": {
+        "accent": "#3FE8FF",
+        "glow": "#86F3FF",
+        "ring_speed": 0.65,
+        "pulse_speed": 0.12
+      },
+      "ERROR": {
+        "accent": "#FF3B3B",
+        "glow": "#FF8181",
+        "ring_speed": 1.4,
+        "pulse_speed": 0.2
+      }
+    }
+  },
+  "app": {
+    "version": "2.0.0"
+  },
+  "brain": {
+    "verbose_mode": true
+  },
+  "llm": {
+    "enabled": true,
+    "allow_config_secrets": false,
+    "provider_order": [
+      "ollama",
+      "groq",
+      "gemini"
+    ],
+    "timeout_seconds": 14,
+    "provider_retries": 1,
+    "retry_backoff_seconds": 0.35,
+    "circuit_breaker_enabled": true,
+    "circuit_breaker_failure_threshold": 2,
+    "circuit_breaker_cooldown_seconds": 18,
+    "prefer_local": true,
+    "temperature": 0.2,
+    "max_tokens": 300,
+    "history_turns": 3,
+    "intent_routing_enabled": false,
+    "intent_min_confidence": 0.58,
+    "system_prompt": "You are DAVE, a highly advanced, sarcastic, and efficient desktop assistant. You prefer concise answers. You are running on a Windows PC.",
+    "groq": {
+      "enabled": true,
+      "api_key": "",
+      "model": "llama-3.1-8b-instant"
+    },
+    "ollama": {
+      "enabled": true,
+      "url": "http://localhost:11434/api/generate",
+      "model": "llama3.2:3b",
+      "timeout_seconds": 14
+    },
+    "gemini": {
+      "enabled": true,
+      "api_key": "",
+      "model": "gemini-2.5-flash",
+      "timeout_seconds": 14
+    },
+    "dynamic_provider_selection": true,
+    "provider_sample_threshold": 2,
+    "bootstrap_example_count": 1,
+    "bootstrap_examples": [
+      {
+        "user": "hello dave",
+        "assistant": "Online. What do you need?"
+      },
+      {
+        "user": "open calculator",
+        "assistant": "Opening Calculator, Sir."
+      },
+      {
+        "user": "search for python threading",
+        "assistant": "Searching for python threading on the web."
+      }
+    ]
+  },
+  "update": {
+    "enabled": true,
+    "channel": "stable",
+    "current_version": "2.0.0",
+    "manifest_url": "",
+    "check_on_startup": false,
+    "request_timeout_seconds": 3.0
+  },
+  "voice": {
+    "tts_backend": "pyttsx3",
+    "tts_rate": 185,
+    "tts_volume": 1.0,
+    "tts_voice_id": "",
+    "microphone_device_index": null,
+    "pause_threshold": 0.8,
+    "ambient_adjust_seconds": 1.0,
+    "mic_reprobe_interval_seconds": 8.0,
+    "listen_timeout": 3.0,
+    "phrase_time_limit": 7.0
+  },
+  "automation": {
+    "allow_shell_commands": true,
+    "shell_timeout_seconds": 60,
+    "shell_output_limit": 900
+  }
+}

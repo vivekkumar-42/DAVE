@@ -1,0 +1,13 @@
+customtkinter
+pillow
+requests
+groq
+openai
+google-genai
+SpeechRecognition
+pyttsx3
+pyaudio
+psutil
+edge-tts
+pygame
+pyinstaller
