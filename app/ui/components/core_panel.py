@@ -14,16 +14,19 @@ class ExecutionConsole(customtkinter.CTkFrame):
     def __init__(self, master: Any) -> None:
         super().__init__(
             master,
-            fg_color=COLORS["panel"],
+            fg_color=blend(COLORS["panel"], COLORS["glass_tint"], 0.32),
             corner_radius=14,
             border_width=1,
-            border_color=COLORS["border"],
+            border_color=blend(COLORS["border"], COLORS["glass_edge"], 0.22),
         )
         self._collapsed = False
         self._height = 170.0
         self._target_height = 170.0
         self._after_id: str | None = None
+        self._flush_after_id: str | None = None
         self._max_lines = 700
+        self._line_count = 0
+        self._pending_logs: list[tuple[str, str]] = []
 
         self.header = customtkinter.CTkFrame(self, fg_color="transparent")
         self.header.pack(fill="x", padx=10, pady=(8, 4))
@@ -52,10 +55,10 @@ class ExecutionConsole(customtkinter.CTkFrame):
 
         self.body = customtkinter.CTkFrame(
             self,
-            fg_color=COLORS["panel_elevated"],
+            fg_color=blend(COLORS["panel_elevated"], COLORS["glass_tint"], 0.36),
             corner_radius=10,
             border_width=1,
-            border_color=COLORS["border"],
+            border_color=blend(COLORS["border"], COLORS["glass_edge"], 0.2),
             height=int(self._height),
         )
         self.body.pack(fill="x", padx=10, pady=(0, 10))
@@ -89,17 +92,33 @@ class ExecutionConsole(customtkinter.CTkFrame):
             normalized = "INFO"
         timestamp = dt.datetime.now().strftime("%H:%M:%S")
         line = f"[{timestamp}] {normalized:<7} {clean}\n"
+        self._pending_logs.append((normalized, line))
+        if len(self._pending_logs) > 1800:
+            overflow = len(self._pending_logs) - 1800
+            del self._pending_logs[0:overflow]
+        self._ensure_log_flush(immediate=len(self._pending_logs) >= 70)
 
+    def _flush_logs(self) -> None:
+        self._flush_after_id = None
+        if not self.winfo_exists() or not self._pending_logs:
+            return
+        batch_size = 120 if len(self._pending_logs) > 220 else 80
+        batch = self._pending_logs[:batch_size]
+        del self._pending_logs[:batch_size]
         self.textbox.configure(state="normal")
-        start = self.textbox.index("end-1c")
-        self.textbox.insert("end", line)
-        end = self.textbox.index("end-1c")
-        tag = f"{normalized}_{timestamp}_{start.replace('.', '_')}"
-        self.textbox.tag_add(tag, start, end)
-        self.textbox.tag_config(tag, foreground=self.textbox.tag_cget(normalized, "foreground"))
+        for level, line in batch:
+            self.textbox.insert("end", line, (level,))
         self.textbox.configure(state="disabled")
         self.textbox.see("end")
+        self._line_count += len(batch)
         self._enforce_max_lines()
+        if self._pending_logs:
+            self._ensure_log_flush(immediate=len(self._pending_logs) > 140)
+
+    def _ensure_log_flush(self, *, immediate: bool) -> None:
+        if self._flush_after_id is not None:
+            return
+        self._flush_after_id = self.after(1 if immediate else 14, self._flush_logs)
 
     def toggle(self) -> None:
         self.set_collapsed(not self._collapsed)
@@ -111,6 +130,14 @@ class ExecutionConsole(customtkinter.CTkFrame):
         self._ensure_height_animation()
 
     def clear(self) -> None:
+        self._pending_logs.clear()
+        self._line_count = 0
+        if self._flush_after_id is not None:
+            try:
+                self.after_cancel(self._flush_after_id)
+            except Exception:
+                pass
+            self._flush_after_id = None
         self.textbox.configure(state="normal")
         self.textbox.delete("1.0", "end")
         self.textbox.configure(state="disabled")
@@ -146,20 +173,22 @@ class ExecutionConsole(customtkinter.CTkFrame):
             except Exception:
                 pass
             self._after_id = None
+        if self._flush_after_id:
+            try:
+                self.after_cancel(self._flush_after_id)
+            except Exception:
+                pass
+            self._flush_after_id = None
 
     def _enforce_max_lines(self) -> None:
-        try:
-            total_lines = int(self.textbox.index("end-1c").split(".")[0])
-        except Exception:
-            return
-
-        overflow = total_lines - self._max_lines
+        overflow = self._line_count - self._max_lines
         if overflow <= 0:
             return
 
         self.textbox.configure(state="normal")
         self.textbox.delete("1.0", f"{overflow + 1}.0")
         self.textbox.configure(state="disabled")
+        self._line_count = self._max_lines
 
 
 class CorePanel(customtkinter.CTkFrame):

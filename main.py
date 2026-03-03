@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import ctypes
+import os
 import sys
 import tkinter
 from ctypes import wintypes
@@ -165,11 +166,44 @@ def run_self_check() -> int:
     return 0
 
 
+def _parse_auto_exit_seconds(argv: list[str]) -> float | None:
+    flag = "--auto-exit-seconds"
+    prefix = f"{flag}="
+    raw_value: str | None = None
+    for index, raw in enumerate(argv):
+        if not isinstance(raw, str):
+            continue
+        item = raw.strip()
+        lowered = item.lower()
+        if lowered.startswith(prefix):
+            raw_value = item.split("=", 1)[1].strip()
+            break
+        if lowered == flag and index + 1 < len(argv):
+            candidate = argv[index + 1]
+            if isinstance(candidate, str):
+                raw_value = candidate.strip()
+                break
+    if raw_value is None:
+        env_value = os.getenv("DAVE_AUTO_EXIT_SECONDS", "").strip()
+        if env_value:
+            raw_value = env_value
+    if raw_value is None or not raw_value:
+        return None
+    try:
+        parsed = float(raw_value)
+    except Exception:
+        logging.warning("Invalid --auto-exit-seconds value: %s", raw_value)
+        return None
+    return max(0.0, min(3600.0, parsed))
+
+
 def main() -> int:
     configure_logging()
-    args = {item.strip().lower() for item in sys.argv[1:] if isinstance(item, str)}
+    argv = [item for item in sys.argv[1:] if isinstance(item, str)]
+    args = {item.strip().lower() for item in argv}
     if "--self-check" in args:
         return run_self_check()
+    auto_exit_seconds = _parse_auto_exit_seconds(argv)
 
     singleton_lock = _acquire_single_instance()
     if singleton_lock is False:
@@ -179,6 +213,13 @@ def main() -> int:
 
     settings = load_config()
     app = MainWindow(settings=settings)
+    if auto_exit_seconds is not None:
+        delay_ms = max(1, int(auto_exit_seconds * 1000))
+        logging.info("Auto-exit enabled; closing UI after %.2fs", auto_exit_seconds)
+        try:
+            app.after(delay_ms, app.shutdown_system)
+        except Exception as exc:
+            logging.warning("Failed to schedule auto-exit timer: %s", exc)
     try:
         app.mainloop()
     finally:

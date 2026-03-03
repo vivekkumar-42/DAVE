@@ -1,7 +1,7 @@
-# DAVE (Desktop Automation & Virtual Engine) v2.0.0
+# DAVE (Desktop Automation & Virtual Engine) v0.3.0
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.0-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-green?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/python-3.11+-yellow?style=flat-square" alt="Python">
 </p>
@@ -40,6 +40,8 @@ DAVE combines:
 - Local automation (`app/modules/automation_engine.py`)
 - Voice engine (STT/TTS) (`app/modules/voice_engine.py`)
 - Multi-provider LLM client with retries, circuit breaker, and offline fallback (`app/modules/llm_interface.py`)
+- Long-term command memory manager (`app/modules/memory_manager.py`)
+- Predictive action engine (`app/modules/predictive_engine.py`)
 
 Entry point: `main.py`
 
@@ -63,22 +65,28 @@ Important runtime behavior:
 - Voice capture with ambient calibration and microphone reprobe fallback
 - Async text-to-speech queue (`pyttsx3`)
 - Local automation for app launch, web search, shell commands, and system controls
+- Reusable workflow execution (`run workflow <name>`) for multi-step routines
 - LLM orchestration across `ollama`, `groq`, and `gemini`
 - Automatic provider health tracking and failover
+- Response cache (TTL + bounded size) to reduce repeated LLM/intent latency
 - Optional LLM intent-router mode (JSON-based action extraction)
+- Level 1 memory bank (SQLite command history + similarity retrieval for dynamic few-shot context)
+- Level 2 predictive habits engine (context-aware next-action suggestions using scikit-learn)
 
 ### UI
 
 - Multi-panel control console
-- Animated reactor with state visuals (`NORMAL`, `LISTENING`, `PROCESSING`, `EXECUTING`, `SPEAKING`, `ERROR`)
+- Glassmorphism + skeuomorphic styling system (frosted panels, edge highlights, depth shading)
+- Animated reactor with state visuals (`NORMAL`, `LISTENING`, `PROCESSING`, `EXECUTING`, `SPEAKING`, `ERROR`) using cached canvas rendering for smoother frame pacing
 - Conversation stream with incremental response streaming
-- Execution console with log levels and collapse/expand
+- Execution console with log levels, collapse/expand, and batched log rendering
 - Live status cards (provider, reliability, thread status, readiness, etc.)
 - Command latency and periodic performance reporting
 
 ### Safety
 
 - Confirmation flow for destructive actions (`shutdown`, `restart`)
+- Guarded shell policy (blocklist + confirm-required patterns + length cap)
 - `cancel` support for pending critical actions
 - Config secret scrubbing by default (environment variables preferred)
 - UI toggles to disable assistant, voice, automation, LLM, and monitoring
@@ -105,7 +113,10 @@ DAVE/
 |   |   |-- automation_engine.py
 |   |   |-- brain_core.py
 |   |   |-- llm_interface.py
+|   |   |-- memory_manager.py
+|   |   |-- predictive_engine.py
 |   |   |-- update_checker.py
+|   |   |-- workflow_engine.py
 |   |   `-- voice_engine.py
 |   `-- ui/
 |       |-- main_window.py
@@ -124,8 +135,13 @@ DAVE/
     |-- test_brain_core.py
     |-- test_llm_interface.py
     |-- test_main_bootstrap.py
+    |-- test_memory_manager.py
+    |-- test_predictive_engine.py
+    |-- test_ui_theme.py
     |-- test_update_checker.py
     |-- test_voice_engine.py
+    |-- test_workflow_engine.py
+    |-- smoke_ui.ps1
     |-- smoke_release.ps1
     `-- installer_smoke.ps1
 ```
@@ -159,6 +175,7 @@ Defined in `requirements.txt`:
 - `edge-tts`
 - `pygame`
 - `pyinstaller`
+- `scikit-learn`
 
 ---
 
@@ -210,6 +227,16 @@ For release build:
 .\release\DAVE\DAVE.exe --self-check
 ```
 
+### 5. Timed UI run (auto-close)
+
+Useful for manual/UI smoke validation without leaving the app window open:
+
+```powershell
+py -3 main.py --auto-exit-seconds=5
+```
+
+You can also set `DAVE_AUTO_EXIT_SECONDS` as an environment variable.
+
 ---
 
 ## Configuration
@@ -247,6 +274,10 @@ Environment variables are the recommended source of truth.
 | `update` | Startup update-check behavior |
 | `voice` | STT/TTS tuning and microphone settings |
 | `automation` | Shell command allow/timeout/output limits |
+| `policy` | Shell risk policy and confirmation guardrails |
+| `workflows` | Named multi-step workflow definitions and execution behavior |
+| `memory` | Level 1 command-history memory bank behavior |
+| `predictive` | Level 2 predictive action engine settings |
 
 ### `ui` block
 
@@ -263,7 +294,7 @@ Key fields (defaults from `config.template.json`):
 - `performance_profiler.persist_to_file`: `true`
 - `performance_profiler.file_name`: `"dave_perf_metrics.jsonl"`
 - `performance_profiler.max_file_size_kb`: `1024`
-- `visual_system.*`: color palette
+- `visual_system.*`: color palette (including glass/skeuo keys such as `glass_tint`, `glass_edge`, `glass_shadow`, `skeuo_highlight`, `skeuo_shadow`)
 - `state_visuals.NORMAL|LISTENING|PROCESSING|EXECUTING|SPEAKING|ERROR`: per-state accent/glow/speed
 
 ### `brain` block
@@ -279,14 +310,18 @@ Global behavior:
 - `prefer_local`: if `true`, `ollama` is moved to front
 - `timeout_seconds`: shared timeout baseline
 - `provider_retries`: retries per provider (`retries + 1` attempts total)
-- `retry_backoff_seconds`: linear backoff multiplier
+- `retry_backoff_seconds`: exponential backoff base delay
+- `retry_jitter_ratio`: randomized jitter ratio applied to retry delays
 - `circuit_breaker_enabled`: skip unstable providers during cooldown
 - `circuit_breaker_failure_threshold`: failures to trip breaker
 - `circuit_breaker_cooldown_seconds`: breaker cooldown duration
 - `dynamic_provider_selection`: rank providers by recent reliability/latency
 - `provider_sample_threshold`: minimum sample count before reordering
+- `response_cache_enabled`: enable/disable in-process response cache
+- `response_cache_ttl_seconds`: cache lifetime in seconds
+- `response_cache_max_entries`: maximum cached entries before LRU eviction
 - `temperature`, `max_tokens`, `history_turns`
-- `intent_routing_enabled`: enables JSON intent-router flow
+- `intent_routing_enabled`: enables structured intent routing (default `true`)
 - `intent_min_confidence`: minimum accepted router confidence
 - `system_prompt`: assistant system prompt
 - `bootstrap_examples` + `bootstrap_example_count`: prepended behavior examples
@@ -314,6 +349,38 @@ Provider-specific fields:
 - `shell_timeout_seconds`
 - `shell_output_limit`
 
+### `policy` block
+
+- `enabled`: enable/disable shell safety policy
+- `pending_confirmation_timeout_seconds`: expiry for pending confirmations
+- `shell_max_command_length`: hard ceiling for shell command length
+- `blocked_shell_patterns`: regex list that blocks dangerous shell commands
+- `confirm_shell_patterns`: regex list that requires confirmation before execution
+
+### `workflows` block
+
+- `enabled`: enable/disable workflow commands
+- `max_steps`: maximum steps allowed per workflow definition
+- `max_depth`: nested workflow recursion limit
+- `stop_on_error`: stop workflow execution on first failed step when `true`
+- `definitions`: dictionary of workflow names to steps (array or object with `description` + `steps`)
+
+### `memory` block
+
+- `enabled`: enable/disable persistence and retrieval of successful command history
+- `top_k`: number of similar successful commands injected into LLM context
+- `min_similarity`: minimum similarity threshold (`difflib.SequenceMatcher`) for retrieval
+- `scan_rows`: max recent successful rows scanned for similarity ranking
+
+### `predictive` block
+
+- `enabled`: enable/disable predictive action engine
+- `confidence_threshold`: minimum probability needed to emit a suggestion
+- `idle_poll_seconds`: how often idle inference runs
+- `suggestion_cooldown_seconds`: minimum interval between suggestions
+- `train_interval_seconds`: background retraining interval (default 86400)
+- `min_training_samples`: minimum habit samples required before training
+
 ### `update` block
 
 - `enabled`
@@ -330,10 +397,13 @@ Provider-specific fields:
 Provider path is attempted in sequence (possibly reordered by reliability if enabled).  
 For each provider:
 
-1. optional retries
+1. optional retries with exponential backoff + jitter
 2. error capture + classification
 3. metrics update (success/failure/latency)
-4. circuit-breaker update
+4. circuit-breaker update (`closed -> open -> half-open`)
+
+When cooldown expires, only one half-open probe request is allowed through.  
+If the probe fails, the breaker re-opens immediately.
 
 If all providers fail, DAVE returns an offline fallback message and stays usable for local automation commands.
 
@@ -362,15 +432,9 @@ Default Groq model in config is `llama-3.1-8b-instant`.
 
 ## Command Routing and Syntax
 
-`MainWindow` first classifies each command as `automation` or `llm` route.
-
-Automation route is selected when text includes tokens like:
-
-- `open`, `launch`, `start`
-- `search for`
-- `shutdown`, `restart`, `reboot`, `lock`, `volume`, `mute`
-- `run`, `execute`, `powershell`, `cmd`, `!`
-- tactical terms: `code red`, `stand down`, `danger`
+`Brain` first evaluates workflow commands, then deterministic local automation syntax (`open`, `search for`, `run`, `volume`, etc.) for immediate execution.  
+If no explicit automation pattern matches, it tries LLM intent routing.  
+If LLM providers are offline, regex automation fallback still handles direct local command forms.
 
 ### Supported command forms
 
@@ -379,6 +443,10 @@ Automation route is selected when text includes tokens like:
 - `open calculator`
 - `launch notepad`
 - `start chrome`
+- File fallback by name/path (if app launch fails):
+  - `open "BIBEK_KUMAR_YADAV_CV (2)"`
+  - `open my cv file naming "BIBEK_KUMAR_YADAV_CV (2)"`
+  - `open C:\Users\<you>\Documents\resume.pdf`
 
 Known aliases include: calculator, notepad, paint, cmd, powershell, terminal, task manager, explorer, settings, snipping tool, word, excel, chrome, edge, firefox, spotify, vscode, discord.
 
@@ -397,6 +465,14 @@ Known aliases include: calculator, notepad, paint, cmd, powershell, terminal, ta
 - `! Get-ChildItem`
 
 Default shell mode is PowerShell unless explicitly set to `cmd`.
+High-risk shell commands may require confirmation based on `policy.confirm_shell_patterns`.
+
+#### Workflows
+
+- `list workflows`
+- `show workflows`
+- `run workflow startup`
+- `workflow startup`
 
 #### System controls
 
@@ -413,7 +489,7 @@ Default shell mode is PowerShell unless explicitly set to `cmd`.
 - `code red` or `danger` -> `TACTICAL`
 - `stand down` or `relax` -> `NORMAL`
 
-### Critical action confirmation
+### Confirmation flows
 
 `shutdown` and `restart` require a second confirmation phrase, e.g.:
 
@@ -422,6 +498,7 @@ Default shell mode is PowerShell unless explicitly set to `cmd`.
 - `cancel`
 
 Pending critical action expires after 30 seconds.
+Guarded shell commands also use `confirm`/`cancel` when policy requires approval.
 
 ---
 
@@ -433,6 +510,7 @@ The app UI has 4 major zones:
    - identity label (`DAVE`)
    - system state pill
    - live indicators: mic, provider, latency, activity
+   - low-overhead glow/indicator updates when animations are paused
 
 2. **Left Control Matrix**
    - Assistant Control
@@ -443,9 +521,9 @@ The app UI has 4 major zones:
    - Settings (diagnostics mode; also expands console output)
 
 3. **Center Core**
-   - Reactor animation
-   - Conversation stream
-   - Execution console (collapsible)
+   - Reactor animation (glass/skeuo depth styling + cached canvas item updates)
+   - Conversation stream (incremental streaming with lightweight fade and capped parallel transitions)
+   - Execution console (collapsible + buffered log flush to reduce UI stutter)
 
 4. **Right Status Panel**
    - Voice Engine
@@ -455,6 +533,11 @@ The app UI has 4 major zones:
    - Thread Status
    - Execution State
    - System Readiness
+
+Predictive suggestions:
+
+- During idle `NORMAL` state, the predictive engine may emit suggestions.
+- These appear in conversation/log stream as `Predictive suggestion: <intent>`.
 
 Bottom command bar supports:
 
@@ -479,6 +562,12 @@ Bottom command bar supports:
 - JSONL snapshots include queue, drain-loop, and command latency metrics
 - File auto-truncates when exceeding configured max size
 
+### ML/Memory state
+
+- `data\dave_memory.db`: Level 1 successful-command memory bank
+- `data\dave_habits.db`: Level 2 habit feature/label dataset
+- `data\dave_habits_model.pkl`: serialized predictive model
+
 ### Update checks
 
 If `update.enabled=true`, `update.check_on_startup=true`, and `update.manifest_url` is set, DAVE performs a startup manifest check and reports results in logs/conversation.
@@ -499,6 +588,9 @@ py -3 -m unittest discover -s tests -p "test_*.py" -v
 py -3 -m unittest tests.test_brain_core -v
 py -3 -m unittest tests.test_automation_engine -v
 py -3 -m unittest tests.test_llm_interface -v
+py -3 -m unittest tests.test_memory_manager -v
+py -3 -m unittest tests.test_predictive_engine -v
+py -3 -m unittest tests.test_ui_theme -v
 py -3 -m unittest tests.test_voice_engine -v
 py -3 -m unittest tests.test_main_bootstrap -v
 py -3 -m unittest tests.test_update_checker -v
@@ -508,6 +600,12 @@ py -3 -m unittest tests.test_update_checker -v
 
 ```powershell
 .\tests\smoke_release.ps1
+```
+
+### UI smoke test (auto-close + cleanup)
+
+```powershell
+.\tests\smoke_ui.ps1
 ```
 
 ### Installer smoke test
@@ -608,6 +706,15 @@ $env:GROQ_MODEL = "llama-3.1-8b-instant"
 ### Shell command blocked
 
 Ensure `automation.allow_shell_commands=true` and UI toggle "Automation Engine" is enabled.
+
+### No predictive suggestions appear
+
+Check:
+
+1. `predictive.enabled=true` in active config
+2. `scikit-learn` is installed in the same Python environment used to run DAVE
+3. Habit dataset is large enough (`predictive.min_training_samples`)
+4. Confidence threshold is not too strict (`predictive.confidence_threshold`)
 
 ### Config edits not applying
 

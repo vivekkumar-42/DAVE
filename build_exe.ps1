@@ -98,6 +98,10 @@ $pyInstallerArgs = @(
   "--collect-all",
   "customtkinter"
 )
+foreach ($pkg in @("sklearn", "scipy", "joblib", "threadpoolctl")) {
+  $pyInstallerArgs += "--collect-all"
+  $pyInstallerArgs += $pkg
+}
 if ($isOneFile) {
   $pyInstallerArgs += "--onefile"
 }
@@ -117,11 +121,14 @@ if (Test-Path (Join-Path $PSScriptRoot "config.template.json")) {
 if (Test-Path (Join-Path $PSScriptRoot "README.md")) {
   Copy-Item -Path (Join-Path $PSScriptRoot "README.md") -Destination $distRoot -Force
 }
+if (Test-Path (Join-Path $PSScriptRoot "CHANGELOG.md")) {
+  Copy-Item -Path (Join-Path $PSScriptRoot "CHANGELOG.md") -Destination $distRoot -Force
+}
 
 $sha = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash
 Set-Content -Path (Join-Path $releaseDir "DAVE.sha256.txt") -Value $sha -Encoding ASCII
 
-$version = "0.0.0"
+$version = "0.3.0"
 $channel = "stable"
 try {
   $configPath = Join-Path $PSScriptRoot "config.json"

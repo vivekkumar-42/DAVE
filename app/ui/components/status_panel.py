@@ -21,10 +21,10 @@ class StatusCard(customtkinter.CTkFrame):
     def __init__(self, master: Any, title: str) -> None:
         super().__init__(
             master,
-            fg_color=COLORS["panel_elevated"],
+            fg_color=blend(COLORS["panel_elevated"], COLORS["glass_tint"], 0.4),
             corner_radius=12,
             border_width=1,
-            border_color=COLORS["border"],
+            border_color=blend(COLORS["border"], COLORS["glass_edge"], 0.22),
             height=88,
         )
         self.pack_propagate(False)
@@ -42,7 +42,7 @@ class StatusCard(customtkinter.CTkFrame):
             top,
             width=14,
             height=14,
-            bg=COLORS["panel_elevated"],
+            bg=blend(COLORS["panel_elevated"], COLORS["glass_tint"], 0.4),
             highlightthickness=0,
             bd=0,
         )
@@ -74,7 +74,11 @@ class StatusCard(customtkinter.CTkFrame):
         self._active_color = color
         self.value_label.configure(text=value)
         self.indicator.itemconfig(self.indicator_dot, fill=color)
-        border = blend(COLORS["border"], color, 0.45 if normalized_level in {"good", "active"} else 0.25)
+        border = blend(
+            blend(COLORS["border"], COLORS["glass_edge"], 0.2),
+            color,
+            0.45 if normalized_level in {"good", "active"} else 0.3,
+        )
         self.configure(border_color=border)
         self._pulse_enabled = normalized_level in {"active", "warning", "error"}
         if self._pulse_enabled and self._animations_enabled:
@@ -96,7 +100,7 @@ class StatusCard(customtkinter.CTkFrame):
         ratio = 0.4 + ((math.sin(self._pulse_phase) + 1.0) * 0.5) * 0.45
         pulse_color = blend(COLORS["panel_elevated"], self._active_color, ratio)
         self.indicator.itemconfig(self.indicator_dot, fill=pulse_color)
-        self._after_id = self.after(90, self._tick_pulse)
+        self._after_id = self.after(78, self._tick_pulse)
 
     def set_animation_active(self, active: bool) -> None:
         self._animations_enabled = bool(active)
@@ -115,7 +119,7 @@ class StatusCard(customtkinter.CTkFrame):
     def _ensure_pulse_loop(self) -> None:
         if self._after_id is not None:
             return
-        self._after_id = self.after(90, self._tick_pulse)
+        self._after_id = self.after(78, self._tick_pulse)
 
     def shutdown(self) -> None:
         if self._after_id:
@@ -130,11 +134,11 @@ class StatusPanel(customtkinter.CTkFrame):
     def __init__(self, master: Any) -> None:
         super().__init__(
             master,
-            fg_color=COLORS["panel"],
+            fg_color=blend(COLORS["panel"], COLORS["glass_tint"], 0.26),
             width=296,
             corner_radius=14,
             border_width=1,
-            border_color=COLORS["border"],
+            border_color=blend(COLORS["border"], COLORS["glass_edge"], 0.22),
         )
         self.pack_propagate(False)
 

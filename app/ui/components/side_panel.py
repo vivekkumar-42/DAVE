@@ -26,10 +26,10 @@ class ControlSection(customtkinter.CTkFrame):
     ) -> None:
         super().__init__(
             master,
-            fg_color=COLORS["panel_elevated"],
+            fg_color=blend(COLORS["panel_elevated"], COLORS["glass_tint"], 0.38),
             corner_radius=12,
             border_width=1,
-            border_color=COLORS["border"],
+            border_color=blend(COLORS["border"], COLORS["glass_edge"], 0.22),
             height=78,
         )
         self.pack_propagate(False)
@@ -43,8 +43,16 @@ class ControlSection(customtkinter.CTkFrame):
 
         self.grid_columnconfigure(0, weight=1)
 
+        self.top_sheen = customtkinter.CTkFrame(
+            self,
+            fg_color=blend(COLORS["skeuo_highlight"], COLORS["panel"], 0.82),
+            height=1,
+            corner_radius=2,
+        )
+        self.top_sheen.grid(row=0, column=0, sticky="new", padx=8, pady=(2, 0))
+
         header = customtkinter.CTkFrame(self, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=10, pady=(8, 0))
+        header.grid(row=1, column=0, sticky="ew", padx=10, pady=(8, 0))
         header.grid_columnconfigure(0, weight=1)
 
         self.title_label = customtkinter.CTkLabel(
@@ -74,7 +82,7 @@ class ControlSection(customtkinter.CTkFrame):
             text_color=COLORS["text_secondary"],
             anchor="w",
         )
-        self.subtitle_label.grid(row=1, column=0, sticky="w", padx=10, pady=(3, 8))
+        self.subtitle_label.grid(row=2, column=0, sticky="w", padx=10, pady=(3, 8))
 
         if spec.default_enabled:
             self.switch.select()
@@ -107,7 +115,7 @@ class ControlSection(customtkinter.CTkFrame):
 
     def set_active(self, active: bool) -> None:
         self._active = active
-        border = COLORS["accent_primary"] if active else COLORS["border"]
+        border = blend(COLORS["glass_edge"], COLORS["accent_primary"], 0.52) if active else blend(COLORS["border"], COLORS["glass_edge"], 0.2)
         self.configure(border_color=border)
         title_color = COLORS["accent_primary"] if active else COLORS["text_primary"]
         self.title_label.configure(text_color=title_color)
@@ -135,9 +143,13 @@ class ControlSection(customtkinter.CTkFrame):
         self._hover_after_id = self.after(16, self._animate_hover)
 
     def _apply_hover_style(self) -> None:
-        active_boost = 0.25 if self._active else 0.0
-        blend_ratio = min(1.0, self._hover_ratio * 0.6 + active_boost)
-        bg_color = blend(COLORS["panel_elevated"], COLORS["accent_secondary"], blend_ratio * 0.32)
+        active_boost = 0.26 if self._active else 0.0
+        blend_ratio = min(1.0, self._hover_ratio * 0.65 + active_boost)
+        bg_color = blend(
+            blend(COLORS["panel_elevated"], COLORS["glass_tint"], 0.36),
+            COLORS["accent_secondary"],
+            blend_ratio * 0.36,
+        )
         self.configure(fg_color=bg_color)
 
     def _ensure_hover_animation(self) -> None:
@@ -163,11 +175,11 @@ class SidePanel(customtkinter.CTkFrame):
     ) -> None:
         super().__init__(
             master,
-            fg_color=COLORS["panel"],
+            fg_color=blend(COLORS["panel"], COLORS["glass_tint"], 0.28),
             width=262,
             corner_radius=14,
             border_width=1,
-            border_color=COLORS["border"],
+            border_color=blend(COLORS["border"], COLORS["glass_edge"], 0.22),
         )
         self.pack_propagate(False)
 

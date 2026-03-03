@@ -14,11 +14,11 @@ class TopBar(customtkinter.CTkFrame):
     def __init__(self, master: Any) -> None:
         super().__init__(
             master,
-            fg_color=COLORS["panel"],
+            fg_color=blend(COLORS["panel"], COLORS["glass_tint"], 0.28),
             corner_radius=0,
             height=50,
             border_width=1,
-            border_color=COLORS["border"],
+            border_color=blend(COLORS["border"], COLORS["glass_edge"], 0.24),
         )
         self.pack_propagate(False)
         self.grid_columnconfigure(0, weight=1)
@@ -32,6 +32,7 @@ class TopBar(customtkinter.CTkFrame):
         self._animations_enabled = True
         self._state_label_cache = "SYSTEM: NORMAL"
         self._indicator_cache: dict[str, tuple[str, str]] = {}
+        self._identity_color_cache = COLORS["accent_primary"]
 
         self.left_frame = customtkinter.CTkFrame(self, fg_color="transparent")
         self.left_frame.grid(row=0, column=0, sticky="w", padx=(14, 0), pady=4)
@@ -40,7 +41,7 @@ class TopBar(customtkinter.CTkFrame):
             self.left_frame,
             text="DAVE",
             font=FONTS["header"],
-            text_color=COLORS["accent_primary"],
+            text_color=self._identity_color_cache,
         )
         self.identity_label.pack(anchor="w")
 
@@ -49,9 +50,9 @@ class TopBar(customtkinter.CTkFrame):
 
         self.state_pill = customtkinter.CTkFrame(
             self.center_frame,
-            fg_color=COLORS["panel_elevated"],
+            fg_color=blend(COLORS["panel_elevated"], COLORS["glass_tint"], 0.42),
             border_width=1,
-            border_color=COLORS["border"],
+            border_color=blend(COLORS["border"], COLORS["glass_edge"], 0.26),
             corner_radius=16,
             height=34,
         )
@@ -62,7 +63,7 @@ class TopBar(customtkinter.CTkFrame):
             width=18,
             height=18,
             highlightthickness=0,
-            bg=COLORS["panel_elevated"],
+            bg=blend(COLORS["panel_elevated"], COLORS["glass_tint"], 0.42),
         )
         self.state_canvas.pack(side="left", padx=(10, 6), pady=7)
         self.state_dot = self.state_canvas.create_oval(4, 4, 14, 14, outline="", fill=COLORS["accent_primary"])
@@ -91,7 +92,7 @@ class TopBar(customtkinter.CTkFrame):
                 text=f"{prefix}: {default}",
                 font=FONTS["small"],
                 text_color=COLORS["text_secondary"],
-                fg_color=COLORS["panel_elevated"],
+                fg_color=blend(COLORS["panel_elevated"], COLORS["glass_tint"], 0.34),
                 corner_radius=10,
                 padx=10,
                 pady=4,
@@ -115,6 +116,9 @@ class TopBar(customtkinter.CTkFrame):
             self._state_label_cache = label_text
         self.state_canvas.itemconfig(self.state_dot, fill=visual.accent)
         self.state_pill.configure(border_color=blend(COLORS["border"], visual.accent, 0.55))
+        if not self._animations_enabled and self._identity_color_cache != visual.accent:
+            self._identity_color_cache = visual.accent
+            self.identity_label.configure(text_color=self._identity_color_cache)
 
     def set_indicator(self, key: str, value: str, level: str = "neutral") -> None:
         label = self.indicators.get(key)
@@ -143,7 +147,7 @@ class TopBar(customtkinter.CTkFrame):
     def _tick_glow(self) -> None:
         if not self.winfo_exists():
             return
-        delay = 90 if self._animations_enabled else 300
+        delay = 72 if self._animations_enabled else 260
         state_visual = STATE_VISUALS.get(self._state, STATE_VISUALS["NORMAL"])
 
         if self._animations_enabled:
@@ -151,13 +155,17 @@ class TopBar(customtkinter.CTkFrame):
             self._identity_phase += 0.09
             glow_ratio = 0.38 + ((math.sin(self._identity_phase) + 1.0) * 0.5) * 0.52
             color = blend(COLORS["accent_secondary"], state_visual.glow, glow_ratio)
-            self.identity_label.configure(text_color=color)
+            if color != self._identity_color_cache:
+                self._identity_color_cache = color
+                self.identity_label.configure(text_color=color)
 
-            if self._state in {"PROCESSING", "EXECUTING", "SPEAKING"} and self._activity_tick_counter % 6 == 0:
+            if self._state in {"PROCESSING", "EXECUTING", "SPEAKING"} and self._activity_tick_counter % 8 == 0:
                 activity = f"LIVE {time.strftime('%H:%M:%S')}"
                 self.set_indicator("activity", activity, level="active")
         else:
-            self.identity_label.configure(text_color=state_visual.accent)
+            if self._identity_color_cache != state_visual.accent:
+                self._identity_color_cache = state_visual.accent
+                self.identity_label.configure(text_color=state_visual.accent)
 
         self._glow_after_id = self.after(delay, self._tick_glow)
 

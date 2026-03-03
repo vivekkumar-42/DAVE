@@ -5,29 +5,34 @@ from typing import Any
 
 
 COLORS: dict[str, str] = {
-    "background": "#0B0F17",
-    "panel": "#121826",
-    "panel_elevated": "#161D2E",
-    "accent_primary": "#00F5FF",
-    "accent_secondary": "#0090FF",
-    "success": "#00FF9C",
-    "warning": "#FFC857",
-    "error": "#FF3B3B",
-    "text_primary": "#E6EDF3",
-    "text_secondary": "#7A8BA3",
-    "border": "#22314A",
+    "background": "#08101D",
+    "panel": "#101B2E",
+    "panel_elevated": "#1A2942",
+    "accent_primary": "#7CEAFF",
+    "accent_secondary": "#42B7FF",
+    "success": "#5FE6AA",
+    "warning": "#FFC66D",
+    "error": "#FF6D6D",
+    "text_primary": "#ECF4FF",
+    "text_secondary": "#8FA7C6",
+    "border": "#31455F",
+    "glass_tint": "#243754",
+    "glass_edge": "#7EC8FF",
+    "glass_shadow": "#050A12",
+    "skeuo_highlight": "#D9ECFF",
+    "skeuo_shadow": "#0A1525",
 }
 DEFAULT_COLORS: dict[str, str] = dict(COLORS)
 
 
 FONTS: dict[str, tuple[str, int, str] | tuple[str, int]] = {
-    "title": ("Bahnschrift", 18, "bold"),
-    "header": ("Bahnschrift", 14, "bold"),
+    "title": ("Bahnschrift SemiCondensed", 19, "bold"),
+    "header": ("Bahnschrift SemiCondensed", 14, "bold"),
     "body": ("Segoe UI", 12),
     "body_bold": ("Segoe UI", 12, "bold"),
     "small": ("Segoe UI", 11),
-    "mono": ("Cascadia Code", 11),
-    "mono_small": ("Cascadia Code", 10),
+    "mono": ("Consolas", 11),
+    "mono_small": ("Consolas", 10),
 }
 
 
@@ -145,6 +150,15 @@ def apply_ui_theme(ui_config: dict[str, Any] | None) -> None:
         "secondary_text": "text_secondary",
         "border": "border",
         "border_color": "border",
+        "glass_tint": "glass_tint",
+        "frost_tint": "glass_tint",
+        "glass_edge": "glass_edge",
+        "frost_edge": "glass_edge",
+        "glass_shadow": "glass_shadow",
+        "skeuo_highlight": "skeuo_highlight",
+        "skeuomorphic_highlight": "skeuo_highlight",
+        "skeuo_shadow": "skeuo_shadow",
+        "skeuomorphic_shadow": "skeuo_shadow",
     }
 
     for source in (config, visual):
@@ -195,6 +209,10 @@ def apply_ui_theme(ui_config: dict[str, Any] | None) -> None:
         COLORS["panel_elevated"] = blend(COLORS["panel"], COLORS["accent_secondary"], 0.2)
     if COLORS["border"] == DEFAULT_COLORS["border"]:
         COLORS["border"] = blend(COLORS["panel"], COLORS["accent_secondary"], 0.3)
+    if COLORS["glass_tint"] == DEFAULT_COLORS["glass_tint"]:
+        COLORS["glass_tint"] = blend(COLORS["panel_elevated"], COLORS["accent_secondary"], 0.18)
+    if COLORS["glass_edge"] == DEFAULT_COLORS["glass_edge"]:
+        COLORS["glass_edge"] = blend(COLORS["accent_primary"], "#FFFFFF", 0.32)
 
 
 def _reset_defaults() -> None:

@@ -1,5 +1,7 @@
 import unittest
 import subprocess
+import tempfile
+from pathlib import Path
 from unittest import mock
 
 from app.modules.automation_engine import AutomationEngine
@@ -85,6 +87,81 @@ class AutomationEngineTests(unittest.TestCase):
         self.assertEqual("", stdout)
         self.assertIn("timed out", stderr.lower())
         self.assertIsNone(code)
+
+    def test_open_file_opens_direct_existing_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_path = Path(tmp_dir) / "BIBEK_KUMAR_YADAV_CV (2).pdf"
+            file_path.write_text("cv", encoding="utf-8")
+            with mock.patch("app.modules.automation_engine.os.startfile", create=True) as startfile_mock:
+                startfile_mock.return_value = None
+                opened = self.engine.open_file(str(file_path))
+
+        self.assertTrue(opened)
+        startfile_mock.assert_called_once_with(str(file_path))
+
+    def test_open_file_finds_filename_without_extension_in_search_roots(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            nested = root / "docs"
+            nested.mkdir(parents=True, exist_ok=True)
+            file_path = nested / "BIBEK_KUMAR_YADAV_CV (2).pdf"
+            file_path.write_text("cv", encoding="utf-8")
+
+            with mock.patch.object(
+                AutomationEngine,
+                "_file_search_roots",
+                return_value=[root],
+            ):
+                with mock.patch(
+                    "app.modules.automation_engine.os.startfile",
+                    create=True,
+                ) as startfile_mock:
+                    startfile_mock.return_value = None
+                    opened = self.engine.open_file("BIBEK_KUMAR_YADAV_CV (2)")
+
+        self.assertTrue(opened)
+        startfile_mock.assert_called_once_with(str(file_path))
+
+    def test_open_file_negative_cache_avoids_repeat_tree_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            with mock.patch.object(
+                AutomationEngine,
+                "_file_search_roots",
+                return_value=[root],
+            ):
+                with mock.patch.object(
+                    AutomationEngine,
+                    "_find_file_in_tree",
+                    return_value=None,
+                ) as finder_mock:
+                    first = self.engine.open_file("missing_resume_file")
+                    second = self.engine.open_file("missing_resume_file")
+
+        self.assertFalse(first)
+        self.assertFalse(second)
+        finder_mock.assert_called_once()
+
+    def test_open_clock_page_opens_timer_uri(self) -> None:
+        with mock.patch("app.modules.automation_engine.os.startfile", create=True) as startfile_mock:
+            startfile_mock.return_value = None
+            opened = self.engine.open_clock_page("timer")
+
+        self.assertTrue(opened)
+        startfile_mock.assert_called_once_with("ms-clock:timer")
+
+    def test_open_clock_page_falls_back_to_base_uri(self) -> None:
+        with mock.patch(
+            "app.modules.automation_engine.os.startfile",
+            side_effect=[OSError("no timer uri"), None],
+            create=True,
+        ) as startfile_mock:
+            opened = self.engine.open_clock_page("alarm")
+
+        self.assertTrue(opened)
+        self.assertEqual(2, startfile_mock.call_count)
+        self.assertEqual("ms-clock:alarm", startfile_mock.call_args_list[0].args[0])
+        self.assertEqual("ms-clock:", startfile_mock.call_args_list[1].args[0])
 
 
 if __name__ == "__main__":

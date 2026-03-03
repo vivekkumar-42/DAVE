@@ -11,3 +11,4 @@ psutil
 edge-tts
 pygame
 pyinstaller
+scikit-learn

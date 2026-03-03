@@ -1,6 +1,7 @@
 param(
   [string]$InstallerPath = "",
-  [string]$InstallDir = "C:\Program Files\DAVE"
+  [string]$InstallDir = "C:\Program Files\DAVE",
+  [int]$ProcessTimeoutSeconds = 300
 )
 
 $ErrorActionPreference = "Stop"
@@ -48,16 +49,48 @@ if (-not (Test-Path $InstallerPath)) {
   throw "Installer not found: $InstallerPath"
 }
 
+function Stop-ProcessSafely {
+  param(
+    [Parameter(Mandatory = $true)]
+    [System.Diagnostics.Process]$Process
+  )
+
+  if ($Process.HasExited) {
+    return
+  }
+
+  try {
+    $null = $Process.CloseMainWindow()
+  } catch {
+    # Ignore; this may be a background process with no main window.
+  }
+
+  Start-Sleep -Milliseconds 700
+
+  if (-not $Process.HasExited) {
+    try { $Process.Kill($true) } catch {}
+  }
+}
+
 function Invoke-SilentProcess {
   param(
     [Parameter(Mandatory = $true)]
     [string]$FilePath,
     [Parameter(Mandatory = $true)]
-    [string[]]$Arguments
+    [string[]]$Arguments,
+    [int]$TimeoutSeconds = $ProcessTimeoutSeconds
   )
 
-  $proc = Start-Process -FilePath $FilePath -ArgumentList $Arguments -Wait -PassThru
-  return $proc.ExitCode
+  $proc = Start-Process -FilePath $FilePath -ArgumentList $Arguments -PassThru
+  try {
+    if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) {
+      throw "Process timed out after $TimeoutSeconds seconds: $FilePath"
+    }
+    return $proc.ExitCode
+  }
+  finally {
+    Stop-ProcessSafely -Process $proc
+  }
 }
 
 function Invoke-UninstallIfPresent {
@@ -73,13 +106,27 @@ function Invoke-UninstallIfPresent {
     return
   }
 
-  $uninstallExit = Invoke-SilentProcess -FilePath $uninstaller -Arguments @(
-    "/VERYSILENT",
-    "/SUPPRESSMSGBOXES",
-    "/NORESTART",
-    "/LOG=$LogPath"
-  )
-  if ($uninstallExit -ne 0) {
+  # Ensure no stale DAVE processes hold files locked during silent uninstall.
+  Get-Process DAVE -ErrorAction SilentlyContinue | ForEach-Object {
+    try { $_.Kill($true) } catch {}
+  }
+  Start-Sleep -Milliseconds 700
+
+  $attempts = 2
+  for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+    $uninstallExit = Invoke-SilentProcess -FilePath $uninstaller -Arguments @(
+      "/VERYSILENT",
+      "/SUPPRESSMSGBOXES",
+      "/NORESTART",
+      "/LOG=$LogPath"
+    )
+    if ($uninstallExit -eq 0) {
+      return
+    }
+    if ($attempt -lt $attempts) {
+      Start-Sleep -Seconds 2
+      continue
+    }
     throw "Uninstall failed with exit code $uninstallExit"
   }
 }

@@ -3,8 +3,25 @@ from unittest import mock
 
 import json
 import os
+import time
 
 from app.modules.llm_interface import CLOUD_OFFLINE_MESSAGE, LLMClient
+
+
+class FakeMemoryManager:
+    def __init__(self, examples: list[tuple[str, str]]) -> None:
+        self.examples = examples
+        self.calls: list[tuple[str, int, float]] = []
+
+    def get_bootstrap_examples(
+        self,
+        user_input: str,
+        *,
+        limit: int = 3,
+        min_similarity: float = 0.35,
+    ) -> list[tuple[str, str]]:
+        self.calls.append((user_input, limit, min_similarity))
+        return list(self.examples[:limit])
 
 
 class LLMClientFallbackTests(unittest.TestCase):
@@ -147,6 +164,55 @@ class LLMClientFallbackTests(unittest.TestCase):
         self.assertIn("User: hello dave", prompt)
         self.assertIn("DAVE:", prompt)
 
+    def test_query_injects_memory_examples_into_prompt(self) -> None:
+        client = self._client()
+        fake_memory = FakeMemoryManager(
+            [
+                (
+                    "open chrome and search cars",
+                    "Resolved successful action: intent=open_and_search | route=automation | target=chrome | query=cars",
+                )
+            ]
+        )
+        client.memory_manager = fake_memory
+        with mock.patch.object(client, "_query_groq", return_value="from groq") as groq_mock:
+            reply = client.query("open browser and search cars")
+
+        self.assertEqual("from groq", reply)
+        provider_prompt = groq_mock.call_args.args[0]
+        self.assertIn("Learned successful patterns:", provider_prompt)
+        self.assertIn("User: open chrome and search cars", provider_prompt)
+        self.assertEqual(1, len(fake_memory.calls))
+
+    def test_route_intent_injects_memory_examples_into_intent_prompt(self) -> None:
+        client = self._client()
+        fake_memory = FakeMemoryManager(
+            [
+                (
+                    "open notepad",
+                    "Resolved successful action: intent=open_app | route=automation | target=notepad",
+                )
+            ]
+        )
+        client.memory_manager = fake_memory
+        payload = {
+            "intent": "open_app",
+            "target": "notepad",
+            "query": "",
+            "command": "",
+            "shell_mode": "powershell",
+            "reply": "",
+            "confidence": 0.9,
+        }
+        with mock.patch.object(client, "_query_groq_intent", return_value=payload) as groq_mock:
+            _ = client.route_intent("open notes")
+
+        intent_prompt = groq_mock.call_args.args[0]
+        self.assertIn("Successful command memories:", intent_prompt)
+        self.assertIn("Past user: open notepad", intent_prompt)
+        self.assertIn("Current user: open notes", intent_prompt)
+        self.assertEqual(1, len(fake_memory.calls))
+
     def test_circuit_breaker_skips_failing_provider_until_cooldown(self) -> None:
         config = {
             "llm": {
@@ -181,6 +247,84 @@ class LLMClientFallbackTests(unittest.TestCase):
         groq_second.assert_not_called()
         ollama_second.assert_called_once()
 
+    def test_half_open_allows_single_probe_then_reopens_on_failure(self) -> None:
+        config = {
+            "llm": {
+                "enabled": True,
+                "provider_order": ["groq", "ollama", "gemini"],
+                "provider_retries": 3,
+                "dynamic_provider_selection": False,
+                "circuit_breaker_enabled": True,
+                "circuit_breaker_failure_threshold": 1,
+                "circuit_breaker_cooldown_seconds": 999,
+                "groq": {"enabled": True, "api_key": "g-key", "model": "llama-3.1-8b-instant"},
+                "ollama": {
+                    "enabled": True,
+                    "url": "http://localhost:11434/api/generate",
+                    "model": "llama3",
+                },
+                "gemini": {"enabled": True, "api_key": "gm-key", "model": "gemini-2.5-flash"},
+            }
+        }
+        client = LLMClient(config=config)
+        client._provider_circuit["groq"]["state"] = "open"
+        client._provider_circuit["groq"]["open_until"] = time.time() - 1.0
+
+        with mock.patch.object(client, "_query_groq", side_effect=RuntimeError("still down")) as groq_mock:
+            with mock.patch.object(client, "_query_ollama", return_value="from ollama") as ollama_mock:
+                response = client.query("hello")
+
+        self.assertEqual("from ollama", response)
+        self.assertEqual(1, groq_mock.call_count)
+        ollama_mock.assert_called_once()
+        self.assertEqual("open", client._provider_circuit["groq"]["state"])
+        self.assertGreater(float(client._provider_circuit["groq"]["open_until"]), time.time())
+
+    def test_retry_backoff_uses_exponential_with_jitter(self) -> None:
+        config = {
+            "llm": {
+                "enabled": True,
+                "provider_retries": 3,
+                "retry_backoff_seconds": 0.6,
+                "retry_jitter_ratio": 0.35,
+            }
+        }
+        client = LLMClient(config=config)
+        def always_fail() -> str:
+            raise RuntimeError("429")
+
+        with mock.patch("app.modules.llm_interface.random.uniform", return_value=0.0):
+            with mock.patch("app.modules.llm_interface.time.sleep") as sleep_mock:
+                with self.assertRaises(RuntimeError):
+                    client._run_with_retries(
+                        provider_name="groq",
+                        func=always_fail,
+                    )
+
+        self.assertEqual(3, sleep_mock.call_count)
+        delays = [round(call.args[0], 3) for call in sleep_mock.call_args_list]
+        self.assertEqual([0.6, 1.2, 2.4], delays)
+
+    def test_route_intent_uses_structured_provider_output(self) -> None:
+        client = self._client()
+        payload = {
+            "intent": "open_app",
+            "target": "notepad",
+            "query": "",
+            "command": "",
+            "shell_mode": "powershell",
+            "reply": "",
+            "confidence": 0.92,
+        }
+        with mock.patch.object(client, "_query_groq_intent", return_value=payload) as groq_mock:
+            with mock.patch.object(client, "_query_ollama_intent") as ollama_mock:
+                routed = client.route_intent("open notepad")
+
+        self.assertEqual("open_app", (routed or {}).get("intent"))
+        self.assertEqual("notepad", (routed or {}).get("target"))
+        groq_mock.assert_called_once()
+        ollama_mock.assert_not_called()
+
     def test_constructor_handles_malformed_numeric_config(self) -> None:
         config = {
             "llm": {
@@ -210,6 +354,7 @@ class LLMClientFallbackTests(unittest.TestCase):
         self.assertEqual(5, client.max_history_turns)
         self.assertEqual(1, client.provider_retries)
         self.assertEqual(0.6, client.retry_backoff_seconds)
+        self.assertEqual(0.35, client.retry_jitter_ratio)
         self.assertTrue(client.prefer_local)
         self.assertFalse(client.dynamic_provider_selection)
         self.assertEqual(3, client.provider_sample_threshold)
@@ -253,6 +398,37 @@ class LLMClientFallbackTests(unittest.TestCase):
 
         self.assertEqual("gsk_live", client.groq_api_key)
         self.assertEqual("AIza_live", client.gemini_api_key)
+
+    def test_query_ephemeral_uses_response_cache_on_repeat_prompt(self) -> None:
+        client = self._client()
+        with mock.patch.object(client, "_query_groq", return_value="cached hello") as groq_mock:
+            first = client.query_ephemeral("hello cache")
+            second = client.query_ephemeral("hello cache")
+
+        self.assertEqual("cached hello", first)
+        self.assertEqual("cached hello", second)
+        groq_mock.assert_called_once()
+        health = client.get_health()
+        self.assertEqual("cache_hit", health.get("reason"))
+
+    def test_route_intent_uses_response_cache_on_repeat_prompt(self) -> None:
+        client = self._client()
+        payload = {
+            "intent": "open_app",
+            "target": "notepad",
+            "query": "",
+            "command": "",
+            "shell_mode": "powershell",
+            "reply": "",
+            "confidence": 0.91,
+        }
+        with mock.patch.object(client, "_query_groq_intent", return_value=payload) as groq_mock:
+            first = client.route_intent("open notes")
+            second = client.route_intent("open notes")
+
+        self.assertEqual("open_app", (first or {}).get("intent"))
+        self.assertEqual("open_app", (second or {}).get("intent"))
+        groq_mock.assert_called_once()
 
 
 if __name__ == "__main__":

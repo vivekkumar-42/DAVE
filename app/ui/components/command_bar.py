@@ -18,10 +18,10 @@ class CommandBar(customtkinter.CTkFrame):
     ) -> None:
         super().__init__(
             master,
-            fg_color=COLORS["panel"],
+            fg_color=blend(COLORS["panel"], COLORS["glass_tint"], 0.24),
             corner_radius=0,
             border_width=1,
-            border_color=COLORS["border"],
+            border_color=blend(COLORS["border"], COLORS["glass_edge"], 0.2),
             height=84,
         )
         self.pack_propagate(False)
@@ -46,10 +46,10 @@ class CommandBar(customtkinter.CTkFrame):
             inner,
             placeholder_text="Enter command...",
             font=FONTS["body"],
-            fg_color=COLORS["panel_elevated"],
+            fg_color=blend(COLORS["panel_elevated"], COLORS["glass_tint"], 0.35),
             text_color=COLORS["text_primary"],
             border_width=2,
-            border_color=COLORS["border"],
+            border_color=blend(COLORS["border"], COLORS["glass_edge"], 0.24),
             height=42,
         )
         self.command_entry.grid(row=0, column=0, sticky="ew", padx=(0, 10))
@@ -73,8 +73,8 @@ class CommandBar(customtkinter.CTkFrame):
             inner,
             text="Mic Off",
             command=self._on_toggle_mic,
-            fg_color=COLORS["panel_elevated"],
-            hover_color=blend(COLORS["panel_elevated"], COLORS["accent_secondary"], 0.4),
+            fg_color=blend(COLORS["panel_elevated"], COLORS["glass_tint"], 0.34),
+            hover_color=blend(COLORS["panel_elevated"], COLORS["accent_secondary"], 0.42),
             text_color=COLORS["text_primary"],
             column=2,
             width=92,
@@ -93,8 +93,8 @@ class CommandBar(customtkinter.CTkFrame):
             inner,
             text="Clear",
             command=self._on_clear,
-            fg_color=COLORS["panel_elevated"],
-            hover_color=blend(COLORS["panel_elevated"], COLORS["accent_secondary"], 0.35),
+            fg_color=blend(COLORS["panel_elevated"], COLORS["glass_tint"], 0.34),
+            hover_color=blend(COLORS["panel_elevated"], COLORS["accent_secondary"], 0.4),
             text_color=COLORS["text_primary"],
             column=4,
             width=80,
@@ -196,7 +196,7 @@ class CommandBar(customtkinter.CTkFrame):
         else:
             self.mic_button.configure(
                 text="Mic Off",
-                fg_color=COLORS["panel_elevated"],
+                fg_color=blend(COLORS["panel_elevated"], COLORS["glass_tint"], 0.34),
                 hover_color=blend(COLORS["panel_elevated"], COLORS["accent_secondary"], 0.4),
             )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import re
 import sys
 import threading
 import time
@@ -17,7 +18,7 @@ from app.ui.components.side_panel import SidePanel
 from app.ui.components.status_panel import StatusPanel
 from app.ui.components.top_bar import TopBar
 from app.ui.events import UIEvent
-from app.ui.theme import COLORS, STATE_VISUALS, apply_ui_theme
+from app.ui.theme import COLORS, STATE_VISUALS, apply_ui_theme, blend
 
 from app.runtime_paths import runtime_data_dir
 
@@ -124,7 +125,7 @@ class MainWindow(customtkinter.CTk):
         update_cfg = update_raw if isinstance(update_raw, dict) else {}
         self._update_enabled = self._coerce_bool(update_cfg.get("enabled", True), True)
         self._update_channel = str(update_cfg.get("channel", "stable")).strip() or "stable"
-        self._update_current_version = str(update_cfg.get("current_version", "2.0.0")).strip() or "2.0.0"
+        self._update_current_version = str(update_cfg.get("current_version", "0.3.0")).strip() or "0.3.0"
         self._update_manifest_url = str(update_cfg.get("manifest_url", "")).strip()
         self._update_check_on_startup = self._coerce_bool(
             update_cfg.get("check_on_startup", False),
@@ -246,8 +247,14 @@ class MainWindow(customtkinter.CTk):
         )
         self.command_bar.pack(fill="x", side="bottom")
 
-        body = customtkinter.CTkFrame(self, fg_color="transparent")
-        body.pack(fill="both", expand=True, padx=12, pady=10)
+        body = customtkinter.CTkFrame(
+            self,
+            fg_color=blend(COLORS["background"], COLORS["panel"], 0.42),
+            corner_radius=16,
+            border_width=1,
+            border_color=blend(COLORS["border"], COLORS["glass_edge"], 0.18),
+        )
+        body.pack(fill="both", expand=True, padx=10, pady=9)
 
         self.side_panel = SidePanel(
             body,
@@ -885,6 +892,10 @@ class MainWindow(customtkinter.CTk):
         lowered = text.lower().strip()
         if not lowered:
             return "llm"
+        if re.search(r"\b(?:set|start|create|begin|schedule)\s+(?:an?\s+)?(?:timer|alarm)\b", lowered):
+            return "automation"
+        if lowered.startswith("timer ") or lowered.startswith("alarm "):
+            return "automation"
         automation_tokens = [
             "open ",
             "launch ",
@@ -1286,7 +1297,8 @@ class MainWindow(customtkinter.CTk):
         return " | ".join(parts), level
 
     def _on_brain_signal(self, signal: str) -> None:
-        normalized = str(signal or "").strip().upper()
+        raw_signal = str(signal or "").strip()
+        normalized = raw_signal.upper()
         if normalized == "ALERT_ON":
             self.enqueue("state", {"value": "EXECUTING"})
             self.enqueue("conversation", {"role": "SYSTEM", "text": "Alert mode activated by core."})
@@ -1295,6 +1307,80 @@ class MainWindow(customtkinter.CTk):
             self.enqueue("state", {"value": "NORMAL"})
             self.enqueue("conversation", {"role": "SYSTEM", "text": "Alert mode cleared by core."})
             self.enqueue("log", {"text": "Brain signal -> ALERT_OFF", "level": "INFO"})
+        elif normalized.startswith("PREDICT_SUGGEST:"):
+            suggestion = raw_signal.split(":", 1)[1].strip()
+            if not suggestion:
+                return
+            self.enqueue(
+                "conversation",
+                {
+                    "role": "SYSTEM",
+                    "text": f"Predictive suggestion: {suggestion}",
+                },
+            )
+            self.enqueue(
+                "log",
+                {
+                    "text": f"Brain signal -> PREDICT_SUGGEST ({suggestion})",
+                    "level": "INFO",
+                },
+            )
+        elif normalized.startswith("WORKFLOW_STEP:"):
+            parts = raw_signal.split(":", 4)
+            if len(parts) < 5:
+                return
+            workflow_name = parts[1].strip()
+            step_index = parts[2].strip()
+            total_steps = parts[3].strip()
+            step_text = parts[4].strip()
+            self.enqueue(
+                "conversation",
+                {
+                    "role": "SYSTEM",
+                    "text": (
+                        f"Workflow {workflow_name}: step {step_index}/{total_steps} "
+                        f"-> {step_text}"
+                    ),
+                },
+            )
+            self.enqueue(
+                "log",
+                {
+                    "text": (
+                        f"Brain signal -> WORKFLOW_STEP "
+                        f"({workflow_name} {step_index}/{total_steps})"
+                    ),
+                    "level": "INFO",
+                },
+            )
+        elif normalized.startswith("WORKFLOW_DONE:"):
+            parts = raw_signal.split(":", 4)
+            if len(parts) < 5:
+                return
+            workflow_name = parts[1].strip()
+            completed = parts[2].strip()
+            failed = parts[3].strip()
+            elapsed_ms = parts[4].strip()
+            self.enqueue(
+                "conversation",
+                {
+                    "role": "SYSTEM",
+                    "text": (
+                        f"Workflow {workflow_name} done: completed={completed} "
+                        f"failed={failed} elapsed={elapsed_ms} ms"
+                    ),
+                },
+            )
+            self.enqueue(
+                "log",
+                {
+                    "text": (
+                        f"Brain signal -> WORKFLOW_DONE "
+                        f"({workflow_name} completed={completed} failed={failed} ms={elapsed_ms})"
+                    ),
+                    "level": "INFO" if failed == "0" else "WARN",
+                },
+            )
 
     def _increment_workers(self, delta: int) -> None:
         with self._worker_lock:
@@ -1390,6 +1476,11 @@ class MainWindow(customtkinter.CTk):
         try:
             if self.voice is not None:
                 self.voice.shutdown()
+        except Exception:
+            pass
+        try:
+            if self.brain is not None:
+                self.brain.shutdown()
         except Exception:
             pass
         try:
