@@ -4,6 +4,25 @@ All notable changes to DAVE are documented in this file.
 
 This repository did not have a prior changelog, so this first entry is a baseline snapshot of the current state as of February 14, 2026.
 
+## [2026-03-09] - Dependency Refresh, Pinning, and Maintenance Validation
+
+### Changed
+- Upgraded direct provider/runtime dependencies:
+  - `google-genai` `1.64.0 -> 1.66.0`
+  - `groq` `1.0.0 -> 1.1.0`
+  - `openai` `2.21.0 -> 2.26.0`
+  - `SpeechRecognition` `3.14.5 -> 3.14.6`
+- Pinned all direct dependencies in `requirements.txt` to installed, validated versions for reproducible environments.
+
+### Validation
+- `py -3 -m pip check`
+- `py -3 -m pip_audit -r requirements.txt`
+- `py -3 -m unittest discover -s tests -p "test_*.py" -v`
+- `.\tests\smoke_ui.ps1 -AutoExitSeconds 5 -TimeoutSeconds 45`
+- `.\tests\smoke_release.ps1 -TimeoutSeconds 90`
+- `.\tests\installer_smoke.ps1 -ProcessTimeoutSeconds 300`
+- Result: all checks passed; no known vulnerabilities; no broken requirements.
+
 ## [2026-03-03] - Release 0.3.0: UI Visual System Propagation and Smoother Rendering
 
 ### Changed
